@@ -1,0 +1,5 @@
+
+*.pdb
+.DS_Store
+.claude
+.vscode
