@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Non-Asymptotic Convergence - Zigan Wang</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Oswald:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #020617; /* slate-950 */
+        color: #f8fafc;
+        margin: 0;
+        overflow: hidden; /* Prevent body scroll since app handles it */
+      }
+      h1, h2, h3, h4, h5, h6 {
+        font-family: 'Oswald', sans-serif;
+        text-transform: uppercase;
+      }
+      /* Custom Scrollbar */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #0f172a;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #1e293b;
+        border-radius: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #334155;
+      }
+      
+      /* Animations */
+      @keyframes fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .animate-fade-in {
+        animation: fade-in 0.5s ease-out forwards;
+      }
+      @keyframes slide-up {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-slide-up {
+        animation: slide-up 0.5s ease-out forwards;
+      }
+
+      /* Print Styles for PDF Export */
+      @media print {
+        @page {
+          size: landscape;
+          margin: 0;
+        }
+        html, body {
+          width: 100%;
+          height: auto !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          background-color: #020617 !important;
+          overflow: visible !important;
+        }
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+        /* Hide the main interactive app */
+        #app-root {
+          display: none !important;
+        }
+        /* Show the printable deck */
+        #printable-root {
+          display: block !important;
+        }
+        /* Hide scrollbars in print */
+        ::-webkit-scrollbar {
+          display: none;
+        }
+      }
+      
+      /* Default hide printable root on screen */
+      #printable-root {
+        display: none;
+      }
+    </style>
+    
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.309.0",
+        "katex": "https://esm.sh/katex@0.16.9"
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useCallback } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        ChevronLeft, 
+        ChevronRight, 
+        Menu, 
+        X, 
+        Mic2, 
+        MonitorPlay, 
+        Maximize2,
+        Minimize2,
+        CheckCircle, 
+        Activity,
+        BookOpen,
+        Sigma,
+        BrainCircuit,
+        TrendingUp,
+        Info,
+        Download
+      } from 'lucide-react';
+      import katex from 'katex';
+
+      // --- TYPES & ENUMS ---
+      const SlideType = {
+        TITLE: 'TITLE',
+        STANDARD: 'STANDARD',
+        TABLE: 'TABLE',
+        IMAGE: 'IMAGE',
+        CONCLUSION: 'CONCLUSION',
+      };
+
+      // --- DATA ---
+      const PRESENTATION_DATA = [
+        {
+          id: 1,
+          type: SlideType.TITLE,
+          title: "Non-Asymptotic Convergence of Accelerated Hamiltonian Monte Carlo",
+          subtitle: "with Discontinuous Stochastic Gradients for Financial Deep Learning",
+          authors: [
+            "Zigan WANG",
+            "Associate Professor",
+            "Shenzhen Institute of Economics and Management, Tsinghua University"
+          ],
+          presenter: "Nov 22, 2025 | 15:10 - 16:00",
+          notes: "Welcome everyone. Today I will present our work on SGHMC in non-smooth landscapes common in financial deep learning."
+        },
+        {
+          id: 2,
+          type: SlideType.STANDARD,
+          title: "Problem Formulation",
+          subtitle: "Nonconvex Stochastic Optimization",
+          content: [
+            "Objective: Minimize expected risk u(θ) where the underlying gradient h is the gradient of u.",
+            "Approach: Construct an estimator θ̂ by sampling from the target Gibbs measure π_β via Langevin dynamics.",
+            "Challenge: Existing theory assumes Lipschitz continuity. We address the discontinuous case common in Neural Networks."
+          ],
+          mathBlock: [
+            "\\text{minimize } \\theta \\in \\mathbb{R}^d \\mapsto u(\\theta) := \\mathbb{E}_{X \\sim \\mathcal{D}}[U(\\theta, X)]",
+            "\\pi_\\beta(d\\theta) \\propto \\exp(-\\beta u(\\theta))d\\theta",
+            "\\text{Langevin SDE: } dZ_t = -h(Z_t)dt + \\sqrt{2\\beta^{-1}}dB_t"
+          ],
+          notation: [
+            { symbol: "\\theta \\in \\mathbb{R}^d", desc: "Parameter vector to be optimized" },
+            { symbol: "u(\\theta)", desc: "Non-convex objective function (Population Risk)" },
+            { symbol: "\\pi_\\beta", desc: "Target Gibbs measure at inverse temperature \\beta" },
+            { symbol: "\\beta > 0", desc: "Inverse temperature parameter" },
+            { symbol: "h(\\cdot) = \\nabla u(\\cdot)", desc: "Gradient of the potential function" },
+            { symbol: "Z_t", desc: "Continuous-time Langevin diffusion process" },
+            { symbol: "B_t", desc: "Standard Brownian motion" }
+          ],
+          notes: "We frame the optimization problem as sampling from a distribution concentrated around the global minimizers. Note that pi_beta depends on the potential u."
+        },
+        {
+          id: 3,
+          type: SlideType.STANDARD,
+          title: "The SGHMC Algorithm",
+          subtitle: "Stochastic Gradient Hamiltonian Monte Carlo",
+          content: [
+            "SGHMC discretizes the underdamped Langevin diffusion, introducing momentum (V) to accelerate mixing.",
+            "V_n is the momentum variable, θ_n is the position.",
+            "H(θ, X) is the stochastic gradient oracle, which we allow to be discontinuous."
+          ],
+          mathBlock: [
+            "\\begin{cases} V_{n+1} = V_n - \\eta [\\gamma V_n + H(\\theta_n, X_{n+1})] + \\sqrt{2\\gamma\\eta\\beta^{-1}}\\xi_{n+1} \\\\ \\theta_{n+1} = \\theta_n + \\eta V_n \\end{cases}",
+            "\\gamma > 0 \\text{ (friction)}, \\quad \\eta > 0 \\text{ (step size)}"
+          ],
+          notation: [
+            { symbol: "V_n, \\theta_n", desc: "Momentum and Position variables at step n" },
+            { symbol: "\\eta", desc: "Step size (learning rate)" },
+            { symbol: "\\gamma", desc: "Friction coefficient" },
+            { symbol: "H(\\theta, X)", desc: "Stochastic gradient oracle (possibly discontinuous)" },
+            { symbol: "\\xi_{n+1}", desc: "Standard Gaussian noise \\mathcal{N}(0, I_d)" }
+          ],
+          notes: "Contrast this with SGLD. SGHMC is a second-order method using momentum to traverse the landscape more effectively."
+        },
+        {
+          id: 4,
+          type: SlideType.STANDARD,
+          title: "Theoretical Framework",
+          subtitle: "Handling Discontinuities (Assumptions 1-3)",
+          content: [
+            "We replace global Lipschitz assumptions with a decomposition strategy.",
+            "H = F + G: F is locally Lipschitz; G is merely bounded measurable (handles jumps).",
+            "Assumption 3 (Continuity in Average): The gradient is continuous only in expectation, critical for ReLU."
+          ],
+          mathBlock: [
+            "H(\\theta, x) = F(\\theta, x) + G(\\theta, x)",
+            "|F(\\theta, x) - F(\\theta', x')| \\le (1+|x|+|x'|)^\\rho (L_1|\\theta-\\theta'| + L_2|x-x'|)",
+            "\\mathbb{E}[|H(\\theta, X_0) - H(\\theta', X_0)|] \\le L|\\theta - \\theta'|"
+          ],
+          notation: [
+             { symbol: "F(\\theta, x)", desc: "Smooth component of gradient (Locally Lipschitz)" },
+             { symbol: "G(\\theta, x)", desc: "Discontinuous component (Bounded)" },
+             { symbol: "\\rho", desc: "Polynomial growth rate of Lipschitz constant" },
+             { symbol: "L, L_1, L_2", desc: "Lipschitz constants" },
+             { symbol: "\\mathbb{E}", desc: "Expectation operator w.r.t random data X" }
+          ],
+          notes: "This decomposition is the mathematical key. G allows for the 'kinks' in ReLU networks provided they smooth out in expectation."
+        },
+        {
+          id: 5,
+          type: SlideType.STANDARD,
+          title: "Main Theorems: Convergence",
+          subtitle: "Theorem 3.1 & 3.3",
+          content: [
+            "Theorem 3.1: Convergence in Wasserstein-2 distance. Rate η^(1/4) reflects the penalty for discontinuity.",
+            "Theorem 3.3: Bounds the Expected Excess Risk, decomposing into sampling error and temperature error."
+          ],
+          mathBlock: [
+            "W_2(\\mathcal{L}(\\theta_n, V_n), \\bar{\\pi}_\\beta) \\le \\mathcal{O}(\\eta^{1/2}) + \\mathcal{O}(\\eta^{1/4}) + \\mathcal{O}(e^{-c n \\eta})",
+            "\\mathbb{E}[u(\\theta_n)] - \\inf u \\le C_1 \\eta^{1/4} + \\frac{d}{2\\beta} \\log(\\dots)"
+          ],
+          notation: [
+            { symbol: "W_2", desc: "Wasserstein-2 distance" },
+            { symbol: "\\mathcal{L}(\\theta_n, V_n)", desc: "Law of the algorithm iterates at step n" },
+            { symbol: "\\bar{\\pi}_\\beta", desc: "Invariant measure of the underdamped Langevin diffusion" },
+            { symbol: "\\eta^{1/4}", desc: "Convergence rate term (slower due to discontinuity)" },
+            { symbol: "\\inf u", desc: "Global minimum of the objective" }
+          ],
+          notes: "The n^(1/4) term dominates the error bound, a specific result of the non-smooth landscape."
+        },
+        {
+          id: 6,
+          type: SlideType.STANDARD,
+          title: "Proof Methodology",
+          subtitle: "Auxiliary Processes & Synchronous Coupling",
+          content: [
+            "1. Continuous Interpolation: Matches discrete SGHMC at grid points.",
+            "2. Auxiliary Process: True Langevin diffusion coupled to the interpolation.",
+            "3. Lyapunov Analysis: Controls high-order moments for stability."
+          ],
+          mathBlock: [
+            "d\\bar{V}_t = -\\eta(\\gamma \\bar{V}_{\\lfloor t \\rfloor} + H(\\bar{\\theta}_{\\lfloor t \\rfloor}, X_{\\lceil t \\rceil}))dt + \\dots",
+            "W_2 \\le W_2(\\text{Alg}, \\text{Interp}) + W_2(\\text{Interp}, \\text{Target})"
+          ],
+          notation: [
+            { symbol: "\\bar{V}_t, \\bar{\\theta}_t", desc: "Continuous-time interpolation process" },
+            { symbol: "\\lfloor t \\rfloor", desc: "Floor function (discretization time)" },
+            { symbol: "\\lceil t \\rceil", desc: "Ceiling function (next sample index)" },
+            { symbol: "\\text{Alg}", desc: "Discrete Algorithm Process" },
+            { symbol: "\\text{Target}", desc: "Target Equilibrium Distribution" }
+          ],
+          notes: "We use a triangle inequality approach bounding the distance between discrete steps and continuous dynamics."
+        },
+        {
+          id: 7,
+          type: SlideType.STANDARD,
+          title: "App I: Quantile Estimation",
+          subtitle: "Optimizing Discontinuous Loss",
+          content: [
+            "Problem: Estimate q-quantile of a distribution.",
+            "Loss function l_q(s) involves indicator functions, leading to discontinuous gradients.",
+            "Theory justifies SGHMC for this non-smooth convex problem."
+          ],
+          mathBlock: [
+            "u(\\theta) = \\mathbb{E}[(q - \\mathbb{1}_{X<\\theta})(X-\\theta)] + \\lambda_r|\\theta|^2",
+            "\\nabla u(\\theta) \\text{ involves } \\mathbb{1}_{X < \\theta} \\implies \\text{Discontinuous}"
+          ],
+          notation: [
+            { symbol: "q \\in (0,1)", desc: "Target quantile level" },
+            { symbol: "\\mathbb{1}_{A}", desc: "Indicator function (1 if A is true, 0 otherwise)" },
+            { symbol: "\\lambda_r", desc: "Regularization parameter" },
+            { symbol: "\\nabla u", desc: "Sub-gradient of the loss" }
+          ],
+          notes: "The indicator function creates a jump in the gradient, exactly satisfying our G-component assumption."
+        },
+        {
+          id: 8,
+          type: SlideType.STANDARD,
+          title: "App II: ReLU Neural Networks",
+          subtitle: "Transfer Learning Setup",
+          content: [
+            "Training a Two-Hidden-Layer Feed Forward Network (TLFN).",
+            "Weights W0, W2 are fixed; we optimize W1.",
+            "Gradient w.r.t W1 involves ReLU derivative (Heaviside step function)."
+          ],
+          mathBlock: [
+            "\\mathfrak{N}(\\theta, z) = \\sum W_2 \\sigma_2 ( \\sum W_1 \\sigma_{ReLU}(W_0 z + b_0) )",
+            "H(\\theta, x) \\text{ contains } \\mathbb{1}_{\\{W_0 z + b_0 > 0\\}}"
+          ],
+          notation: [
+            { symbol: "W_0, W_1, W_2", desc: "Weight matrices for layers" },
+            { symbol: "\\sigma_{ReLU}", desc: "Rectified Linear Unit function \\max(0, z)" },
+            { symbol: "\\mathbb{1}_{\\{\\dots\\}}", desc: "Heaviside step function (derivative of ReLU)" },
+            { symbol: "\\mathfrak{N}(\\theta, z)", desc: "Neural Network output" }
+          ],
+          notes: "The derivative of ReLU is discontinuous at 0. This fits our framework perfectly."
+        },
+        {
+          id: 9,
+          type: SlideType.STANDARD,
+          title: "App III: Hedging",
+          subtitle: "Asymmetric Risk in Finance",
+          content: [
+            "Hedging options in Black-Scholes-Merton market under asymmetric risk.",
+            "Loss Penalizes under-hedging more than over-hedging.",
+            "Gradient is discontinuous at zero."
+          ],
+          mathBlock: [
+            "\\min \\mathbb{E} \\left[ \\frac{(1-\\gamma \\text{Sign}(W_K - h_K))^2}{2} (W_K - h_K)^2 \\right]",
+            "\\text{Sign}(y) \\text{ creates discontinuity.}"
+          ],
+          notation: [
+            { symbol: "\\text{Sign}(y)", desc: "Sign function (-1 if y<0, 1 if y>0)" },
+            { symbol: "W_K", desc: "Terminal wealth" },
+            { symbol: "h_K", desc: "Liability/Claim to be hedged" },
+            { symbol: "\\gamma", desc: "Risk asymmetry parameter" }
+          ],
+          notes: "Real-world financial application where the objective function itself is non-smooth."
+        },
+        {
+          id: 10,
+          type: SlideType.TABLE,
+          title: "Empirical Verification",
+          subtitle: "Performance on Real-World Datasets",
+          tableHeaders: ["Dataset / Task", "Algorithm", "Metric (MSE/Risk)", "Convergence"],
+          tableRows: [
+            { label: "Quantile (q=0.95)", values: ["SGHMC", "0.007 (Lowest)", "Fast"], highlight: true },
+            { label: "Quantile (q=0.95)", values: ["SGLD", "0.010", "Slow"], highlight: false },
+            { label: "Concrete Strength", values: ["SGHMC", "Lowest MSE", "Stable"], highlight: true },
+            { label: "FashionMNIST", values: ["SGHMC", "High Accuracy", "Competitive"], highlight: true }
+          ],
+          notation: [
+            { symbol: "q", desc: "Quantile level" },
+            { symbol: "\\text{MSE}", desc: "Mean Squared Error" },
+            { symbol: "\\text{SGHMC}", desc: "Stochastic Gradient Hamiltonian Monte Carlo" },
+            { symbol: "\\text{SGLD}", desc: "Stochastic Gradient Langevin Dynamics" }
+          ],
+          notes: "SGHMC consistently outperforms SGLD in these non-smooth tasks."
+        },
+        {
+          id: 11,
+          type: SlideType.CONCLUSION,
+          title: "Conclusion & Impact",
+          subtitle: "Implications for Financial Economics",
+          content: [
+            "First non-asymptotic convergence proof for SGHMC with discontinuous gradients.",
+            "Enables robust Bayesian inference in deep ReLU networks for finance.",
+            "Applications: Volatility forecasting, Portfolio optimization, Risk management."
+          ],
+          notes: "Summarize and open for Q&A."
+        }
+      ];
+
+      // --- SUB-COMPONENTS ---
+
+      const MathBlock = ({ items }) => {
+        return (
+          <div className="my-2 md:my-4 space-y-2 md:space-y-3">
+            {items.map((item, idx) => {
+              const html = katex.renderToString(item, {
+                displayMode: true,
+                throwOnError: false,
+              });
+              return (
+                <div 
+                  key={idx} 
+                  className="p-3 bg-slate-900/60 border border-blue-900/40 rounded-lg shadow-lg overflow-x-auto backdrop-blur-sm hover:border-blue-500/40 transition-colors"
+                >
+                  <div 
+                    className="text-xs sm:text-sm md:text-base text-blue-100 text-center font-serif"
+                    dangerouslySetInnerHTML={{ __html: html }} 
+                  />
+                </div>
+              );
+            })}
+          </div>
+        );
+      };
+
+      const NotationLegend = ({ items }) => {
+        if (!items || items.length === 0) return null;
+        
+        return (
+          <div className="mt-auto pt-4 border-t border-slate-800/60">
+            <div className="flex items-center gap-2 mb-2 text-blue-400/80">
+              <Info size={14} />
+              <span className="text-[10px] uppercase tracking-widest font-bold">Mathematical Notation</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2">
+              {items.map((item, idx) => {
+                const symbolHtml = katex.renderToString(item.symbol, {
+                  displayMode: false,
+                  throwOnError: false,
+                });
+                return (
+                  <div key={idx} className="flex items-start gap-2 text-xs text-slate-400">
+                    <span 
+                      className="font-serif text-blue-200 shrink-0 min-w-[20px] text-right" 
+                      dangerouslySetInnerHTML={{ __html: symbolHtml }} 
+                    />
+                    <span className="text-slate-500 font-mono select-none">:</span>
+                    <span className="font-light leading-tight">{item.desc}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      };
+
+      const TitleSlide = ({ slide }) => (
+        <div className="flex flex-col justify-center items-center h-full text-center space-y-6 animate-fade-in relative z-10 p-8 md:p-16 overflow-y-auto custom-scrollbar">
+          <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-10">
+             <div className="absolute -top-24 -right-24 w-48 h-48 md:w-96 md:h-96 bg-blue-500 rounded-full blur-3xl"></div>
+             <div className="absolute bottom-0 left-0 w-32 h-32 md:w-64 md:h-64 bg-purple-600 rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="space-y-4 max-w-4xl shrink-0">
+            <h1 className="text-2xl sm:text-3xl md:text-5xl font-bold text-slate-100 leading-tight tracking-tight">
+              {slide.title}
+            </h1>
+            <div className="w-16 h-0.5 bg-blue-500/50 mx-auto my-6"></div>
+            <h2 className="text-lg sm:text-xl md:text-2xl text-slate-300 font-light">
+              {slide.subtitle}
+            </h2>
+          </div>
+
+          <div className="mt-8 md:mt-16 space-y-8 w-full max-w-3xl mx-auto shrink-0">
+            <div>
+              <div className="flex flex-col items-center space-y-1">
+                {slide.authors?.map((author, i) => (
+                  <p key={i} className={`text-slate-300 ${i === 0 ? 'text-lg md:text-xl font-semibold text-white' : 'text-sm md:text-base font-light'}`}>{author}</p>
+                ))}
+              </div>
+            </div>
+            <div className="pt-2 text-slate-500 text-xs md:text-sm font-mono flex flex-col items-center">
+              <span>{slide.presenter}</span>
+            </div>
+          </div>
+        </div>
+      );
+
+      const StandardSlide = ({ slide }) => (
+        <div className="flex flex-col h-full animate-slide-up px-4 py-2 md:px-12 md:py-6 min-h-0">
+          <div className="mb-2 md:mb-4 border-b border-blue-500/30 pb-2 md:pb-3 shrink-0">
+            <h2 className="text-xl sm:text-2xl md:text-4xl font-bold text-white tracking-tight">{slide.title}</h2>
+            {slide.subtitle && <h3 className="text-sm sm:text-base md:text-lg text-blue-300 mt-1 font-light tracking-wide flex items-center gap-2"><BookOpen size={16} className="inline" /> {slide.subtitle}</h3>}
+          </div>
+          
+          <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar min-h-0 flex flex-col">
+            <div className="flex-shrink-0">
+              {slide.content && (
+                <ul className="space-y-2 md:space-y-4 mb-4">
+                  {slide.content.map((point, i) => (
+                    <li key={i} className="flex items-start text-sm sm:text-base md:text-lg text-slate-200 group">
+                      <span className="mr-3 md:mr-4 mt-1.5 text-blue-400 flex-shrink-0 group-hover:text-blue-300 transition-colors">
+                        <CheckCircle className="w-4 h-4 md:w-5 md:h-5" />
+                      </span>
+                      <span className="leading-relaxed font-light">{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              
+              {slide.mathBlock && <MathBlock items={slide.mathBlock} />}
+            </div>
+            
+            {/* Spacer to push notation to bottom if content is short */}
+            <div className="flex-grow"></div>
+            
+            {slide.notation && <NotationLegend items={slide.notation} />}
+          </div>
+        </div>
+      );
+
+      const TableSlide = ({ slide }) => (
+        <div className="flex flex-col h-full animate-slide-up px-4 py-2 md:px-12 md:py-6 min-h-0">
+          <div className="mb-2 md:mb-4 border-b border-blue-500/30 pb-2 md:pb-3 shrink-0">
+            <h2 className="text-xl sm:text-2xl md:text-4xl font-bold text-white">{slide.title}</h2>
+            {slide.subtitle && <h3 className="text-xs sm:text-base md:text-xl text-blue-300 mt-1">{slide.subtitle}</h3>}
+          </div>
+
+          <div className="flex-grow overflow-auto custom-scrollbar min-h-0 flex flex-col">
+            <div className="flex-shrink-0 w-full flex justify-center p-2">
+                <div className="border border-blue-900/50 rounded-xl overflow-x-auto w-full max-w-5xl shadow-2xl bg-slate-900/30">
+                  <table className="w-full text-left border-collapse min-w-[600px]">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-blue-950 to-slate-900 text-blue-100 border-b border-blue-800">
+                        {slide.tableHeaders?.map((header, i) => (
+                          <th key={i} className="p-3 md:p-5 font-bold text-xs md:text-base tracking-wider uppercase text-center whitespace-nowrap">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-blue-900/30 bg-slate-900/40 backdrop-blur-sm">
+                      {slide.tableRows?.map((row, i) => (
+                        <tr key={i} className={`transition-colors hover:bg-blue-900/20 ${row.highlight ? 'bg-blue-500/10' : ''}`}>
+                          <td className="p-3 md:p-5 font-semibold text-blue-200 border-r border-blue-900/30 text-xs md:text-sm bg-slate-900/30 whitespace-nowrap">{row.label}</td>
+                          {row.values.map((val, j) => (
+                            <td key={j} className={`p-3 md:p-5 text-slate-300 text-xs md:text-sm text-center whitespace-nowrap ${row.highlight && j < 2 ? 'text-emerald-400 font-bold' : ''}`}>
+                              {val}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+            </div>
+             {/* Spacer to push notation to bottom */}
+             <div className="flex-grow"></div>
+             {slide.notation && <NotationLegend items={slide.notation} />}
+          </div>
+        </div>
+      );
+
+      const ImageSlide = ({ slide }) => (
+        <div className="flex flex-col h-full animate-slide-up px-4 py-2 md:px-12 md:py-6 min-h-0">
+          <div className="mb-2 md:mb-4 border-b border-blue-500/30 pb-2 md:pb-3 shrink-0">
+            <h2 className="text-xl sm:text-2xl md:text-4xl font-bold text-white">{slide.title}</h2>
+            {slide.subtitle && <h3 className="text-xs sm:text-base md:text-xl text-blue-300 mt-1">{slide.subtitle}</h3>}
+          </div>
+
+          <div className="flex-grow overflow-y-auto custom-scrollbar min-h-0 flex flex-col">
+             <div className="flex flex-col lg:flex-row gap-4 md:gap-8 flex-shrink-0">
+                <div className="flex-1 space-y-2 md:space-y-4 shrink-0">
+                   <ul className="space-y-2 md:space-y-6">
+                    {slide.content?.map((point, i) => (
+                      <li key={i} className="flex items-start text-xs sm:text-sm md:text-lg text-slate-200">
+                         <span className="mr-2 md:mr-4 mt-1 text-blue-400 flex-shrink-0">
+                          <Activity className="w-3 h-3 md:w-5 md:h-5" />
+                        </span>
+                        <span className="leading-relaxed">{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="flex-1 flex flex-col items-center justify-center bg-slate-900/50 border border-blue-900/30 rounded-xl p-2 md:p-4 shrink-0 lg:shrink">
+                  <div className="relative w-full h-48 md:h-[250px] lg:h-auto lg:flex-grow flex items-center justify-center">
+                      <img 
+                      src={slide.imageUrl} 
+                      alt="Slide Visual" 
+                      className="rounded-lg shadow-2xl border border-slate-700 max-h-full max-w-full object-contain"
+                      />
+                  </div>
+                  <p className="mt-2 md:mt-4 text-[10px] font-mono text-blue-400 bg-blue-950/50 px-3 py-1 rounded border border-blue-900 text-center">
+                      {slide.imageCaption}
+                  </p>
+                </div>
+            </div>
+            
+            {/* Spacer to push notation to bottom */}
+            <div className="flex-grow"></div>
+            {slide.notation && <NotationLegend items={slide.notation} />}
+          </div>
+        </div>
+      );
+
+      const ConclusionSlide = ({ slide }) => (
+        <div className="flex flex-col justify-center items-center h-full text-center space-y-6 animate-fade-in relative z-10 p-8 md:p-16 overflow-y-auto custom-scrollbar">
+          {/* Background Consistent with TitleSlide */}
+          <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-10">
+             <div className="absolute -top-24 -right-24 w-48 h-48 md:w-96 md:h-96 bg-blue-500 rounded-full blur-3xl"></div>
+             <div className="absolute bottom-0 left-0 w-32 h-32 md:w-64 md:h-64 bg-purple-600 rounded-full blur-3xl"></div>
+          </div>
+          
+          {/* Header Section */}
+          <div className="space-y-4 max-w-4xl shrink-0">
+            <h1 className="text-2xl sm:text-3xl md:text-5xl font-bold text-slate-100 leading-tight tracking-tight">
+              {slide.title}
+            </h1>
+            <div className="w-16 h-0.5 bg-blue-500/50 mx-auto my-6"></div>
+            <h2 className="text-lg sm:text-xl md:text-2xl text-slate-300 font-light">
+              {slide.subtitle}
+            </h2>
+          </div>
+          
+          {/* Content List */}
+          <div className="mt-8 md:mt-12 w-full max-w-3xl mx-auto shrink-0 text-left">
+             <ul className="space-y-4 md:space-y-6">
+                {slide.content?.map((point, i) => (
+                  <li key={i} className="flex items-start text-sm md:text-xl text-slate-200 font-light">
+                    <span className="mr-3 md:mr-4 mt-1.5 text-blue-400 flex-shrink-0">
+                      <CheckCircle className="w-4 h-4 md:w-5 md:h-5" />
+                    </span>
+                    <span className="leading-relaxed">{point}</span>
+                  </li>
+                ))}
+              </ul>
+          </div>
+          
+          {/* Footer Section */}
+          <div className="mt-12 md:mt-16 pt-6 w-full max-w-lg mx-auto flex flex-col items-center">
+            <p className="text-xl md:text-2xl font-semibold text-white tracking-widest uppercase">Thank You</p>
+             <p className="text-sm text-slate-500 font-mono mt-2">Wang, Z. (2025). Tsinghua SIEM.</p>
+          </div>
+        </div>
+      );
+
+      // --- PRINTABLE DECK COMPONENT ---
+      // This component renders ALL slides in a vertical list, hidden on screen but visible in print.
+      // Optimized for "Full Screen without Sidebar" PDF export
+      const PrintableDeck = () => {
+        return (
+          <div id="printable-root">
+            {PRESENTATION_DATA.map((slide, idx) => (
+              <div key={idx} className="w-screen h-screen overflow-hidden bg-[#020617] relative flex flex-col" style={{ pageBreakAfter: 'always' }}>
+                  {/* Header for Print - simplified to mimic slide view top bar */}
+                  <div className="px-8 py-4 border-b border-slate-700/50 flex justify-between items-center bg-gradient-to-r from-slate-900 to-slate-800 shrink-0 h-16">
+                      <div className="text-sm font-bold text-blue-400 tracking-widest uppercase">
+                        SIEM Conference 2025
+                      </div>
+                      <div className="text-sm font-mono text-slate-400 bg-slate-900 px-3 py-1 rounded border border-slate-700">
+                        {idx + 1} / {PRESENTATION_DATA.length}
+                      </div>
+                  </div>
+                  
+                  {/* Slide Content Area - no padding here, letting individual slide components handle their internal layout 
+                      to prevent double-padding issues seen in previous versions */}
+                  <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
+                    {(() => {
+                      const commonProps = { slide };
+                      switch (slide.type) {
+                        case SlideType.TITLE: return <TitleSlide {...commonProps} />;
+                        case SlideType.TABLE: return <TableSlide {...commonProps} />;
+                        case SlideType.IMAGE: return <ImageSlide {...commonProps} />;
+                        case SlideType.CONCLUSION: return <ConclusionSlide {...commonProps} />;
+                        default: return <StandardSlide {...commonProps} />;
+                      }
+                    })()}
+                  </div>
+              </div>
+            ))}
+          </div>
+        );
+      };
+
+      // --- MAIN APP COMPONENT ---
+
+      const App = () => {
+        const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
+        const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+        const [showNotes, setShowNotes] = useState(false);
+        const [isFullScreen, setIsFullScreen] = useState(false);
+
+        const currentSlide = PRESENTATION_DATA[currentSlideIdx];
+        const totalSlides = PRESENTATION_DATA.length;
+
+        const nextSlide = useCallback(() => {
+          if (currentSlideIdx < totalSlides - 1) {
+            setCurrentSlideIdx(prev => prev + 1);
+          }
+        }, [currentSlideIdx, totalSlides]);
+
+        const prevSlide = useCallback(() => {
+          if (currentSlideIdx > 0) {
+            setCurrentSlideIdx(prev => prev - 1);
+          }
+        }, [currentSlideIdx]);
+
+        // Toggle Fullscreen Logic
+        const toggleFullScreen = () => {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch((e) => {
+              console.error("Error enabling full-screen mode:", e);
+            });
+            setIsFullScreen(true);
+          } else {
+            if (document.exitFullscreen) {
+              document.exitFullscreen();
+            }
+            setIsFullScreen(false);
+          }
+        };
+
+        const handleDownloadPdf = useCallback(() => {
+          window.print();
+        }, []);
+
+        // Listen for fullscreen change (e.g. user presses ESC)
+        useEffect(() => {
+          const handleFullScreenChange = () => {
+            setIsFullScreen(!!document.fullscreenElement);
+          };
+          document.addEventListener('fullscreenchange', handleFullScreenChange);
+          return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
+        }, []);
+
+        // Keyboard navigation
+        useEffect(() => {
+          const handleKeyDown = (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'Space') {
+              nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+              prevSlide();
+            }
+          };
+          window.addEventListener('keydown', handleKeyDown);
+          return () => window.removeEventListener('keydown', handleKeyDown);
+        }, [nextSlide, prevSlide]);
+
+        // Render content based on type
+        const renderSlideContent = () => {
+          const commonProps = { slide: currentSlide };
+          switch (currentSlide.type) {
+            case SlideType.TITLE:
+              return <TitleSlide {...commonProps} />;
+            case SlideType.TABLE:
+              return <TableSlide {...commonProps} />;
+            case SlideType.IMAGE:
+              return <ImageSlide {...commonProps} />;
+            case SlideType.CONCLUSION:
+              return <ConclusionSlide {...commonProps} />;
+            case SlideType.STANDARD:
+            default:
+              return <StandardSlide {...commonProps} />;
+          }
+        };
+
+        return (
+          <>
+            <div id="app-root" className="flex h-screen bg-[#020617] overflow-hidden font-sans text-slate-100 selection:bg-blue-500 selection:text-white">
+              
+              {/* Background Ambient Glow */}
+              <div className="fixed inset-0 pointer-events-none z-0">
+                <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-900/20 rounded-full blur-[120px]"></div>
+                <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-900/20 rounded-full blur-[100px]"></div>
+              </div>
+
+              {/* Sidebar / Table of Contents */}
+              <div 
+                className={`fixed inset-y-0 left-0 z-50 w-80 bg-[#0b1120] border-r border-slate-800 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col backdrop-blur-xl shrink-0
+                  ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                  ${isFullScreen ? '' : 'lg:relative lg:translate-x-0 lg:w-80'}
+                `}
+              >
+                <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-blue-950/30">
+                  <div>
+                    <h2 className="font-bold text-white text-lg uppercase tracking-wider">Presentation Outline</h2>
+                    <p className="text-xs text-blue-400 mt-1 font-mono">Zigan WANG • Tsinghua SIEM</p>
+                  </div>
+                  <button onClick={() => setIsSidebarOpen(false)} className="text-slate-400 hover:text-white">
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <div className="flex-grow overflow-y-auto p-0 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
+                  {PRESENTATION_DATA.map((slide, idx) => (
+                    <button
+                      key={slide.id}
+                      onClick={() => {
+                        setCurrentSlideIdx(idx);
+                        setIsSidebarOpen(false);
+                      }}
+                      className={`w-full text-left px-6 py-4 text-sm transition-all border-b border-slate-800/50 group relative overflow-hidden ${
+                        currentSlideIdx === idx 
+                          ? 'bg-blue-900/30 text-white' 
+                          : 'text-slate-400 hover:bg-slate-800/50 hover:text-blue-200'
+                      }`}
+                    >
+                      {/* Active Indicator Line */}
+                      {currentSlideIdx === idx && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 shadow-[0_0_10px_#3b82f6]"></div>
+                      )}
+                      
+                      <div className="flex justify-between items-start">
+                         <span className="font-mono text-xs opacity-50 mr-3 mt-0.5">{String(idx + 1).padStart(2, '0')}</span>
+                         <div className="flex flex-col flex-1">
+                            <span className={`font-medium ${currentSlideIdx === idx ? 'text-blue-100' : ''}`}>{slide.title}</span>
+                            {slide.subtitle && <span className="text-[10px] text-slate-500 mt-1 font-mono truncate">{slide.subtitle.split('|')[0].trim()}</span>}
+                         </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                
+                {/* Sidebar Footer with Download Button */}
+                <div className="p-4 border-t border-slate-800 bg-slate-900/50">
+                  <button 
+                    onClick={handleDownloadPdf}
+                    className="flex items-center justify-center w-full gap-2 text-xs font-bold text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-widest hover:bg-slate-800 py-2 rounded border border-transparent hover:border-slate-700/50"
+                  >
+                    <Download size={14} />
+                    Download Slide
+                  </button>
+                </div>
+              </div>
+
+              {/* Main Content Area */}
+              <div className="flex-1 flex flex-col h-full relative z-10 overflow-hidden">
+                {/* Header - Visible on Mobile OR when Fullscreen (to access menu) */}
+                <div className={`bg-[#0b1120] p-4 border-b border-slate-800 flex justify-between items-center shrink-0 z-20 ${isFullScreen ? '' : 'lg:hidden'}`}>
+                  <button onClick={() => setIsSidebarOpen(true)} className="text-slate-300">
+                    <Menu size={24} />
+                  </button>
+                  <span className="font-semibold text-white text-sm truncate max-w-[200px] tracking-wide">
+                    {currentSlide.title}
+                  </span>
+                  <div className="w-6" /> {/* Spacer */}
+                </div>
+
+                {/* Slide Viewport */}
+                <main className="flex-1 p-2 md:p-8 overflow-hidden flex items-center justify-center relative bg-black/20">
+                  
+                  {/* 
+                      SLIDE CONTAINER FIX: 
+                      Using 'w-full' + 'aspect-video' + 'max-h-full' forces the container to maintain 16:9 
+                      while filling the available width/height, preventing collapse on empty slides.
+                  */}
+                  <div className="aspect-video w-full max-w-full max-h-full mx-auto bg-[#0f172a]/90 backdrop-blur-md rounded-lg md:rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden border border-slate-700 relative">
+                     
+                     {/* Slide Top Bar */}
+                     <div className="px-4 md:px-8 py-2 md:py-4 border-b border-slate-700/50 flex justify-between items-center bg-gradient-to-r from-slate-900 to-slate-800 shrink-0 h-10 md:h-14">
+                        <div className="flex items-center space-x-3">
+                           <div className="text-[10px] md:text-xs font-bold text-blue-400 tracking-widest uppercase truncate">
+                              SIEM Conference 2025
+                           </div>
+                        </div>
+                        <div className="text-[10px] md:text-xs font-mono text-slate-400 bg-slate-900 px-2 py-0.5 md:px-3 md:py-1 rounded border border-slate-700">
+                          {currentSlideIdx + 1} / {totalSlides}
+                        </div>
+                     </div>
+
+                    {/* Slide Content Container */}
+                    <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
+                       {renderSlideContent()}
+                    </div>
+
+                    {/* Speaker Notes Toggle Overlay */}
+                    {showNotes && currentSlide.notes && (
+                      <div className="absolute bottom-0 left-0 right-0 bg-yellow-950/95 border-t border-yellow-700/50 p-4 md:p-6 shadow-2xl backdrop-blur-xl animate-slide-up z-30">
+                        <div className="flex items-start gap-4 text-yellow-100 max-w-5xl mx-auto">
+                          <Mic2 size={20} className="mt-1 flex-shrink-0 text-yellow-400 md:w-6 md:h-6" />
+                          <div className="flex-1">
+                            <p className="font-bold text-xs uppercase tracking-widest text-yellow-500 mb-1 md:mb-2">Speaker Notes</p>
+                            <p className="text-sm md:text-lg leading-relaxed font-light">{currentSlide.notes}</p>
+                          </div>
+                          <button onClick={() => setShowNotes(false)} className="text-yellow-500 hover:text-yellow-300">
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </main>
+
+                {/* Control Bar */}
+                <div className="bg-[#0b1120] border-t border-slate-800 p-2 md:p-4 flex justify-between items-center shadow-2xl z-20 shrink-0">
+                  <div className="flex items-center space-x-2 md:space-x-4">
+                     <button 
+                      onClick={() => setShowNotes(!showNotes)}
+                      className={`p-2 rounded-full transition-all ${showNotes ? 'bg-yellow-500/20 text-yellow-400 ring-1 ring-yellow-500/50' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
+                      title="Toggle Speaker Notes"
+                    >
+                      <Mic2 className="w-5 h-5 md:w-6 md:h-6" />
+                    </button>
+                     <button 
+                       onClick={toggleFullScreen}
+                       className="hidden md:block p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors" 
+                       title={isFullScreen ? "Exit Fullscreen" : "Fullscreen"}
+                     >
+                       {isFullScreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+                     </button>
+                  </div>
+
+                  <div className="flex items-center space-x-2 md:space-x-6">
+                    <button 
+                      onClick={prevSlide} 
+                      disabled={currentSlideIdx === 0}
+                      className={`flex items-center px-3 py-1.5 md:px-5 md:py-2.5 rounded-lg transition-all text-sm md:text-base ${
+                        currentSlideIdx === 0 
+                          ? 'opacity-30 cursor-not-allowed text-slate-500' 
+                          : 'hover:bg-blue-900/30 text-blue-400 hover:text-blue-300 font-semibold border border-transparent hover:border-blue-500/30'
+                      }`}
+                    >
+                      <ChevronLeft className="w-4 h-4 md:w-5 md:h-5 mr-1" /> <span className="hidden md:inline">PREV</span>
+                    </button>
+
+                    {/* Progress Bar */}
+                    <div className="hidden sm:block w-32 md:w-64 h-1 bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-500 ease-out shadow-[0_0_10px_#3b82f6]"
+                        style={{ width: `${((currentSlideIdx + 1) / totalSlides) * 100}%` }}
+                      />
+                    </div>
+
+                    {/* Next / Finish Button */}
+                    {currentSlideIdx === totalSlides - 1 ? (
+                       <button 
+                        onClick={() => {
+                          if (document.fullscreenElement) {
+                            document.exitFullscreen().catch(e => console.error(e));
+                          }
+                          setIsFullScreen(false);
+                        }}
+                        className="flex items-center px-4 py-1.5 md:px-6 md:py-2.5 rounded-lg transition-all text-sm md:text-base bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] font-bold tracking-wide"
+                      >
+                        <span className="hidden md:inline">FINISH</span> <CheckCircle className="w-4 h-4 md:w-5 md:h-5 ml-0 md:ml-1" />
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={nextSlide} 
+                        className="flex items-center px-4 py-1.5 md:px-6 md:py-2.5 rounded-lg transition-all text-sm md:text-base bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)] hover:shadow-[0_0_25px_rgba(37,99,235,0.5)] font-bold tracking-wide"
+                      >
+                        <span className="hidden md:inline">NEXT</span> <ChevronRight className="w-4 h-4 md:w-5 md:h-5 ml-0 md:ml-1" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center space-x-4">
+                     <span className="text-[10px] md:text-xs font-bold text-slate-500 hidden md:inline-flex items-center uppercase tracking-widest cursor-default">
+                       <MonitorPlay className="inline mr-2 mb-0.5" size={14} />
+                       Presentation Mode
+                     </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* Printable Slide Deck (Hidden on Screen) */}
+            <PrintableDeck />
+          </>
+        );
+      };
+
+      const rootElement = document.getElementById('root');
+      if (!rootElement) {
+        throw new Error("Could not find root element to mount to");
+      }
+
+      const root = createRoot(rootElement);
+      root.render(
+        <React.StrictMode>
+          <App />
+        </React.StrictMode>
+      );
+    </script>
+  </body>
+</html>
